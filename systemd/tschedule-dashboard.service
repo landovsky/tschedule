@@ -1,0 +1,14 @@
+[Unit]
+Description=tschedule Streamlit dashboard
+After=default.target
+
+[Service]
+Type=simple
+ExecStart=/home/%u/.venvs/tschedule/bin/tschedule dash
+Restart=on-failure
+RestartSec=5
+# Streamlit writes cache/config here
+Environment=HOME=/home/%u
+
+[Install]
+WantedBy=default.target
