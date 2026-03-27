@@ -58,6 +58,8 @@ class JobConfig:
     tags: list = field(default_factory=list)
     systemd_calendar: Optional[str] = None
     jobs_file: str = ""
+    env: dict = field(default_factory=dict)
+    env_file: str = ""
 
 
 def load_project_jobs(jobs_file: Path) -> list[JobConfig]:
@@ -80,6 +82,8 @@ def load_project_jobs(jobs_file: Path) -> list[JobConfig]:
             tags=list(jdata.get('tags', [])),
             systemd_calendar=jdata.get('systemd_calendar'),
             jobs_file=str(jobs_file),
+            env=dict(jdata.get('env') or {}),
+            env_file=str(jdata.get('env_file', '')),
         ))
     return jobs
 

@@ -303,6 +303,92 @@ def _exec(project, job_name):
 
 
 # ---------------------------------------------------------------------------
+# env — manage ~/.config/environment.d/tschedule.conf
+# ---------------------------------------------------------------------------
+
+ENV_D_FILE = Path("~/.config/environment.d/tschedule.conf").expanduser()
+
+
+def _read_env_conf() -> dict[str, str]:
+    if not ENV_D_FILE.exists():
+        return {}
+    result: dict[str, str] = {}
+    for line in ENV_D_FILE.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith('#'):
+            continue
+        if '=' in line:
+            k, _, v = line.partition('=')
+            result[k.strip()] = v.strip()
+    return result
+
+
+def _write_env_conf(env: dict[str, str]) -> None:
+    ENV_D_FILE.parent.mkdir(parents=True, exist_ok=True)
+    lines = ["# tschedule global environment variables", "# Applied to all tschedule job services", ""]
+    for k, v in sorted(env.items()):
+        lines.append(f"{k}={v}")
+    lines.append("")
+    ENV_D_FILE.write_text("\n".join(lines))
+
+
+@main.group()
+def env():
+    """Manage global environment variables for all job services.
+
+    Variables are stored in ~/.config/environment.d/tschedule.conf
+    and applied to every tschedule job run by systemd.
+
+    After changes, run `systemctl --user daemon-reload` or
+    `tschedule reload` to re-generate service units.
+    """
+
+
+@env.command('set')
+@click.argument('key')
+@click.argument('value')
+def env_set(key, value):
+    """Set an environment variable KEY=VALUE."""
+    d = _read_env_conf()
+    d[key] = value
+    _write_env_conf(d)
+    click.echo(f"Set {key}={value} in {ENV_D_FILE}")
+    click.echo("Run `systemctl --user import-environment` or log out/in for it to take effect.")
+
+
+@env.command('unset')
+@click.argument('key')
+def env_unset(key):
+    """Remove an environment variable."""
+    d = _read_env_conf()
+    if key not in d:
+        raise click.ClickException(f"{key} is not set.")
+    del d[key]
+    _write_env_conf(d)
+    click.echo(f"Removed {key} from {ENV_D_FILE}")
+
+
+@env.command('list')
+def env_list():
+    """List all global environment variables."""
+    d = _read_env_conf()
+    if not d:
+        click.echo(f"No variables set in {ENV_D_FILE}")
+        return
+    for k, v in sorted(d.items()):
+        click.echo(f"{k}={v}")
+
+
+@env.command('edit')
+def env_edit():
+    """Open the env conf file in $EDITOR."""
+    ENV_D_FILE.parent.mkdir(parents=True, exist_ok=True)
+    if not ENV_D_FILE.exists():
+        _write_env_conf({})
+    click.edit(filename=str(ENV_D_FILE))
+
+
+# ---------------------------------------------------------------------------
 # helpers
 # ---------------------------------------------------------------------------
 

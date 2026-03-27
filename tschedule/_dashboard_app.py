@@ -8,6 +8,9 @@ import json
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
+from zoneinfo import ZoneInfo
+
+TZ = ZoneInfo("Europe/Prague")
 
 import streamlit as st
 
@@ -21,7 +24,7 @@ def _fmt_dt(s: str | None) -> str:
     if not s:
         return "—"
     try:
-        dt = datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+        dt = datetime.fromisoformat(s).replace(tzinfo=timezone.utc).astimezone(TZ)
         return dt.strftime('%Y-%m-%d %H:%M')
     except Exception:
         return s[:16] if s else "—"

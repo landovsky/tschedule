@@ -39,6 +39,12 @@ def _service(job: JobConfig) -> str:
         "[Service]",
         "Type=oneshot",
         f"Environment=PATH={_user_path()}",
+    ]
+    for key, val in (job.env or {}).items():
+        lines.append(f'Environment="{key}={val}"')
+    if job.env_file:
+        lines.append(f"EnvironmentFile={job.env_file}")
+    lines += [
         f"ExecStart={bin_path} _exec {job.project} {job.name}",
         f"TimeoutStartSec={job.timeout}",
     ]
