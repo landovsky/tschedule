@@ -1,0 +1,22 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tschedule"
+version = "0.1.0"
+requires-python = ">=3.10"
+dependencies = [
+    "click>=8.0",
+    "pyyaml>=6.0",
+    "watchdog>=3.0",
+    "rich>=13.0",
+    "streamlit>=1.30",
+    "croniter>=2.0",
+]
+
+[project.scripts]
+tschedule = "tschedule.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["."]
