@@ -22,6 +22,13 @@ def _tschedule_bin() -> str:
     return path or str(Path("~/.local/bin/tschedule").expanduser())
 
 
+def _user_path() -> str:
+    """Build a PATH that includes ~/.local/bin on top of the systemd default."""
+    local_bin = str(Path("~/.local/bin").expanduser())
+    base = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+    return f"{local_bin}:{base}"
+
+
 def _service(job: JobConfig) -> str:
     bin_path = _tschedule_bin()
     lines = [
@@ -31,6 +38,7 @@ def _service(job: JobConfig) -> str:
         "",
         "[Service]",
         "Type=oneshot",
+        f"Environment=PATH={_user_path()}",
         f"ExecStart={bin_path} _exec {job.project} {job.name}",
         f"TimeoutStartSec={job.timeout}",
     ]
