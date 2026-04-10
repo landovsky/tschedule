@@ -8,25 +8,17 @@ import subprocess
 import sys
 import time
 
-from .config import load_global_config, discover_all_jobs
+from .config import JobConfig, load_global_config, discover_all_jobs
 from .db import DB
 
 
-def exec_job(project: str, job_name: str) -> None:
-    cfg = load_global_config()
-    db = DB(cfg.db_path)
+def run_job(job: JobConfig, db: DB) -> tuple[int, str, str]:
+    """Execute a job command, record to DB, return (exit_code, stdout, stderr).
 
-    jobs = discover_all_jobs(cfg)
-    job = next((j for j in jobs if j.project == project and j.name == job_name), None)
-    if job is None:
-        print(f"tschedule: job not found: {project}/{job_name}", file=sys.stderr)
-        sys.exit(1)
-
+    This is the testable core: no sys.exit, no config loading.
+    """
     job_id = db.upsert_job(job.project, job.name, job.description, job.tags)
     run_id = db.start_run(job_id)
-
-    t0 = time.monotonic()
-    print(f"tschedule: starting {project}/{job_name}", file=sys.stderr)
 
     exit_code = 1
     stdout_text = ""
@@ -60,9 +52,26 @@ def exec_job(project: str, job_name: str) -> None:
             stderr_text = str(exc)
             break
 
-    elapsed = time.monotonic() - t0
     db.finish_run(run_id, exit_code, stdout_text, stderr_text)
+    return exit_code, stdout_text, stderr_text
 
+
+def exec_job(project: str, job_name: str) -> None:
+    cfg = load_global_config()
+    db = DB(cfg.db_path)
+
+    jobs = discover_all_jobs(cfg)
+    job = next((j for j in jobs if j.project == project and j.name == job_name), None)
+    if job is None:
+        print(f"tschedule: job not found: {project}/{job_name}", file=sys.stderr)
+        sys.exit(1)
+
+    t0 = time.monotonic()
+    print(f"tschedule: starting {project}/{job_name}", file=sys.stderr)
+
+    exit_code, _, stderr_text = run_job(job, db)
+
+    elapsed = time.monotonic() - t0
     status = "ok" if exit_code == 0 else f"failed (exit {exit_code})"
     print(f"tschedule: finished {project}/{job_name} — {status} in {elapsed:.1f}s", file=sys.stderr)
 

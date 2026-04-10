@@ -28,11 +28,12 @@ class GlobalConfig:
     projects_dir: Path = field(default_factory=lambda: PROJECTS_DIR)
 
 
-def load_global_config() -> GlobalConfig:
+def load_global_config(config_file: Path | None = None) -> GlobalConfig:
     cfg = GlobalConfig()
-    if not CONFIG_FILE.exists():
+    path = config_file if config_file is not None else CONFIG_FILE
+    if not path.exists():
         return cfg
-    data = yaml.safe_load(CONFIG_FILE.read_text()) or {}
+    data = yaml.safe_load(path.read_text()) or {}
     if 'dashboard' in data:
         d = data['dashboard']
         cfg.dashboard.host = d.get('host', cfg.dashboard.host)

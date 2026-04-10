@@ -70,50 +70,54 @@ def _timer(job: JobConfig) -> str:
     ])
 
 
-def write_units(job: JobConfig) -> str:
+def write_units(job: JobConfig, unit_dir: Path | None = None) -> str:
     """Write .service and .timer files for a job. Returns the unit base name."""
-    SYSTEMD_USER_DIR.mkdir(parents=True, exist_ok=True)
+    d = unit_dir if unit_dir is not None else SYSTEMD_USER_DIR
+    d.mkdir(parents=True, exist_ok=True)
     name = unit_name(job.project, job.name)
-    (SYSTEMD_USER_DIR / f"{name}.service").write_text(_service(job))
-    (SYSTEMD_USER_DIR / f"{name}.timer").write_text(_timer(job))
+    (d / f"{name}.service").write_text(_service(job))
+    (d / f"{name}.timer").write_text(_timer(job))
     return name
 
 
-def list_managed_units() -> set[str]:
-    return {p.stem for p in SYSTEMD_USER_DIR.glob(f"{PREFIX}-*.timer")}
+def list_managed_units(unit_dir: Path | None = None) -> set[str]:
+    d = unit_dir if unit_dir is not None else SYSTEMD_USER_DIR
+    return {p.stem for p in d.glob(f"{PREFIX}-*.timer")}
 
 
 def _ctl(*args):
     subprocess.run(["systemctl", "--user", *args], check=False, capture_output=True)
 
 
-def sync_units(jobs: list[JobConfig]) -> dict:
+def sync_units(jobs: list[JobConfig], unit_dir: Path | None = None, dry_run: bool = False) -> dict:
     """Write units for all jobs, remove orphans, reload daemon, enable timers."""
+    d = unit_dir if unit_dir is not None else SYSTEMD_USER_DIR
     results: dict = {'written': [], 'removed': [], 'errors': []}
     current: set[str] = set()
 
     for job in jobs:
         try:
-            name = write_units(job)
+            name = write_units(job, unit_dir=d)
             current.add(name)
             results['written'].append(f"{job.project}/{job.name}")
         except Exception as e:
             results['errors'].append(f"{job.project}/{job.name}: {e}")
 
-    for existing in list_managed_units():
+    for existing in list_managed_units(unit_dir=d):
         if existing not in current:
-            _ctl('disable', '--now', f'{existing}.timer')
+            if not dry_run:
+                _ctl('disable', '--now', f'{existing}.timer')
             for suffix in ('.timer', '.service'):
-                p = SYSTEMD_USER_DIR / f"{existing}{suffix}"
+                p = d / f"{existing}{suffix}"
                 if p.exists():
                     p.unlink()
             results['removed'].append(existing)
 
-    _ctl('daemon-reload')
-
-    for name in current:
-        _ctl('enable', f'{name}.timer')
-        _ctl('start', f'{name}.timer')
+    if not dry_run:
+        _ctl('daemon-reload')
+        for name in current:
+            _ctl('enable', f'{name}.timer')
+            _ctl('start', f'{name}.timer')
 
     return results
 
