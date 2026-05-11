@@ -56,6 +56,25 @@ def run_job(job: JobConfig, db: DB) -> tuple[int, str, str]:
     return exit_code, stdout_text, stderr_text
 
 
+def _try_notify(cfg, db: DB, job, exit_code: int, elapsed: float,
+                 stdout_text: str, stderr_text: str, run_id: int, job_id: int) -> None:
+    """Send Telegram notification if policy requires it. Never raises."""
+    from .notify import should_notify, format_message, send_telegram
+
+    if not cfg.telegram.bot_token or not cfg.telegram.chat_id:
+        return
+
+    prev_exit_code = db.get_previous_exit_code(job_id, run_id)
+    if not should_notify(job.notify, exit_code, prev_exit_code):
+        return
+
+    try:
+        msg = format_message(job.project, job.name, exit_code, elapsed, stdout_text, stderr_text)
+        send_telegram(cfg.telegram.bot_token, cfg.telegram.chat_id, msg)
+    except Exception as exc:
+        print(f"tschedule: telegram notification failed: {exc}", file=sys.stderr)
+
+
 def exec_job(project: str, job_name: str) -> None:
     cfg = load_global_config()
     db = DB(cfg.db_path)
@@ -69,7 +88,8 @@ def exec_job(project: str, job_name: str) -> None:
     t0 = time.monotonic()
     print(f"tschedule: starting {project}/{job_name}", file=sys.stderr)
 
-    exit_code, _, stderr_text = run_job(job, db)
+    job_id = db.get_job_id(project, job_name) or db.upsert_job(project, job_name, job.description, job.tags)
+    exit_code, stdout_text, stderr_text = run_job(job, db)
 
     elapsed = time.monotonic() - t0
     status = "ok" if exit_code == 0 else f"failed (exit {exit_code})"
@@ -78,5 +98,10 @@ def exec_job(project: str, job_name: str) -> None:
     if exit_code != 0:
         if stderr_text:
             print(stderr_text, file=sys.stderr)
+
+    # Get run_id for notification (the most recent run for this job)
+    runs = db.get_run_history(job_id, limit=1)
+    run_id = runs[0]['id'] if runs else 0
+    _try_notify(cfg, db, job, exit_code, elapsed, stdout_text, stderr_text, run_id, job_id)
 
     sys.exit(exit_code)

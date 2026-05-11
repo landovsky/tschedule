@@ -22,8 +22,15 @@ class DashboardConfig:
 
 
 @dataclass
+class TelegramConfig:
+    bot_token: str = ""
+    chat_id: str = ""
+
+
+@dataclass
 class GlobalConfig:
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
+    telegram: TelegramConfig = field(default_factory=TelegramConfig)
     db_path: Path = field(default_factory=lambda: DEFAULT_DB)
     projects_dir: Path = field(default_factory=lambda: PROJECTS_DIR)
 
@@ -42,6 +49,13 @@ def load_global_config(config_file: Path | None = None) -> GlobalConfig:
         cfg.db_path = Path(data['db']['path']).expanduser()
     if 'discovery' in data and 'projects_dir' in data['discovery']:
         cfg.projects_dir = Path(data['discovery']['projects_dir']).expanduser()
+    if 'telegram' in data:
+        t = data['telegram']
+        cfg.telegram.bot_token = str(t.get('bot_token', ''))
+        cfg.telegram.chat_id = str(t.get('chat_id', ''))
+    # Environment variables override config file
+    cfg.telegram.bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', cfg.telegram.bot_token)
+    cfg.telegram.chat_id = os.environ.get('TELEGRAM_CHAT_ID', cfg.telegram.chat_id)
     return cfg
 
 
@@ -55,6 +69,7 @@ class JobConfig:
     working_dir: str = ""
     timeout: int = 300
     on_failure: str = "notify"
+    notify: str = "on_error"
     retries: int = 0
     tags: list = field(default_factory=list)
     systemd_calendar: Optional[str] = None
@@ -79,6 +94,7 @@ def load_project_jobs(jobs_file: Path) -> list[JobConfig]:
             working_dir=jdata.get('working_dir', str(jobs_file.parent)),
             timeout=int(jdata.get('timeout', 300)),
             on_failure=jdata.get('on_failure', 'notify'),
+            notify=jdata.get('notify', 'on_error'),
             retries=int(jdata.get('retries', 0)),
             tags=list(jdata.get('tags', [])),
             systemd_calendar=jdata.get('systemd_calendar'),

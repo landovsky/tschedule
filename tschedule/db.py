@@ -127,6 +127,17 @@ class DB:
                 ORDER BY j.project, j.name
             """).fetchall()
 
+    def get_previous_exit_code(self, job_id: int, exclude_run_id: int) -> int | None:
+        """Get the exit code of the most recent finished run before the current one."""
+        with self._conn() as conn:
+            row = conn.execute(
+                """SELECT exit_code FROM runs
+                   WHERE job_id = ? AND id != ? AND finished_at IS NOT NULL
+                   ORDER BY started_at DESC LIMIT 1""",
+                (job_id, exclude_run_id),
+            ).fetchone()
+            return row['exit_code'] if row else None
+
     def get_all_runs(self, limit: int = 500) -> list:
         with self._conn() as conn:
             return conn.execute("""
