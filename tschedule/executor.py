@@ -59,20 +59,25 @@ def run_job(job: JobConfig, db: DB) -> tuple[int, str, str]:
 def _try_notify(cfg, db: DB, job, exit_code: int, elapsed: float,
                  stdout_text: str, stderr_text: str, run_id: int, job_id: int) -> None:
     """Send Telegram notification if policy requires it. Never raises."""
-    from .notify import should_notify, format_message, send_telegram
+    from .notify import should_notify, format_message, send_notification, resolve_notifier
 
-    if not cfg.telegram.bot_token or not cfg.telegram.chat_id:
+    if not cfg.notify.enabled:
+        return
+    # No notifier wrapper available (e.g. dev box / CI) — stay quiet, like the old
+    # "no bot token configured" path did, rather than logging an error per run.
+    if resolve_notifier(cfg.notify.notifier) is None:
         return
 
     prev_exit_code = db.get_previous_exit_code(job_id, run_id)
     if not should_notify(job.notify, exit_code, prev_exit_code):
         return
 
+    channel = job.channel or cfg.notify.channel
     try:
         msg = format_message(job.project, job.name, exit_code, elapsed, stdout_text, stderr_text)
-        send_telegram(cfg.telegram.bot_token, cfg.telegram.chat_id, msg)
+        send_notification(msg, channel=channel, notifier=cfg.notify.notifier)
     except Exception as exc:
-        print(f"tschedule: telegram notification failed: {exc}", file=sys.stderr)
+        print(f"tschedule: notification failed: {exc}", file=sys.stderr)
 
 
 def exec_job(project: str, job_name: str) -> None:

@@ -22,15 +22,18 @@ class DashboardConfig:
 
 
 @dataclass
-class TelegramConfig:
-    bot_token: str = ""
-    chat_id: str = ""
+class NotifyConfig:
+    # Notifications go through the devops-telegram /notify service via the
+    # `notify-tomas-telegram` wrapper — no bot token / chat id lives here.
+    enabled: bool = True
+    channel: str = ""          # global default channel; per-job `channel:` overrides it
+    notifier: str = "notify-tomas-telegram"
 
 
 @dataclass
 class GlobalConfig:
     dashboard: DashboardConfig = field(default_factory=DashboardConfig)
-    telegram: TelegramConfig = field(default_factory=TelegramConfig)
+    notify: NotifyConfig = field(default_factory=NotifyConfig)
     db_path: Path = field(default_factory=lambda: DEFAULT_DB)
     projects_dir: Path = field(default_factory=lambda: PROJECTS_DIR)
 
@@ -49,13 +52,14 @@ def load_global_config(config_file: Path | None = None) -> GlobalConfig:
         cfg.db_path = Path(data['db']['path']).expanduser()
     if 'discovery' in data and 'projects_dir' in data['discovery']:
         cfg.projects_dir = Path(data['discovery']['projects_dir']).expanduser()
-    if 'telegram' in data:
-        t = data['telegram']
-        cfg.telegram.bot_token = str(t.get('bot_token', ''))
-        cfg.telegram.chat_id = str(t.get('chat_id', ''))
+    if 'notify' in data:
+        n = data['notify']
+        if 'enabled' in n:
+            cfg.notify.enabled = bool(n['enabled'])
+        cfg.notify.channel = str(n.get('channel', cfg.notify.channel))
+        cfg.notify.notifier = str(n.get('notifier', cfg.notify.notifier))
     # Environment variables override config file
-    cfg.telegram.bot_token = os.environ.get('TELEGRAM_BOT_TOKEN', cfg.telegram.bot_token)
-    cfg.telegram.chat_id = os.environ.get('TELEGRAM_CHAT_ID', cfg.telegram.chat_id)
+    cfg.notify.channel = os.environ.get('TSCHEDULE_NOTIFY_CHANNEL', cfg.notify.channel)
     return cfg
 
 
@@ -70,6 +74,7 @@ class JobConfig:
     timeout: int = 300
     on_failure: str = "notify"
     notify: str = "on_error"
+    channel: str = ""          # overrides the global default notify channel for this job
     retries: int = 0
     tags: list = field(default_factory=list)
     systemd_calendar: Optional[str] = None
@@ -95,6 +100,7 @@ def load_project_jobs(jobs_file: Path) -> list[JobConfig]:
             timeout=int(jdata.get('timeout', 300)),
             on_failure=jdata.get('on_failure', 'notify'),
             notify=jdata.get('notify', 'on_error'),
+            channel=str(jdata.get('channel', '')),
             retries=int(jdata.get('retries', 0)),
             tags=list(jdata.get('tags', [])),
             systemd_calendar=jdata.get('systemd_calendar'),

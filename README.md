@@ -105,10 +105,18 @@ jobs:
     working_dir: /path/to/dir        # Default: directory containing jobs.yaml
     timeout: 300                     # Seconds before SIGKILL. Default: 300
     on_failure: notify               # notify | ignore  (future: retry handler)
+    notify: on_error                 # always | on_error | on_repeated_error | never
+    channel: assistant               # Override the default notify channel for this job
     retries: 1                       # Extra attempts on non-zero exit. Default: 0
     tags: [tag1, tag2]               # Arbitrary tags for filtering
     systemd_calendar: "Mon..Fri *-*-* 08:00:00"  # Override cron conversion
 ```
+
+Notifications are delivered through the [`devops-telegram`](https://devops-telegram.kopernici.cz)
+`/notify` service via the `notify-tomas-telegram` wrapper (no bot token lives in
+tschedule). `channel` picks the bot: omit it (or `default`/`devops`) to use the
+service's default bot, or set `assistant` to DM Tomáš directly via the Assistant
+bot. Per-job `channel` overrides the global default (see Configuration).
 
 ### Cron → systemd calendar conversion
 
@@ -157,9 +165,19 @@ db:
 
 discovery:
   projects_dir: ~/.config/tschedule/projects.d
+
+notify:
+  enabled: true              # Master switch for job-result notifications
+  channel: ""                # Global default channel: "" / default / devops / assistant
+  notifier: notify-tomas-telegram   # Wrapper command (found on PATH)
 ```
 
 `--host` and `--port` flags on `tschedule dash` override the config values.
+`TSCHEDULE_NOTIFY_CHANNEL` overrides `notify.channel` from the environment.
+
+The notifier wrapper reads `DEVOPS_TELEGRAM_NOTIFY_TOKEN` from the environment;
+for systemd jobs this is supplied via `~/.config/environment.d/tschedule.conf`.
+If the wrapper isn't found, notifications are silently skipped.
 
 ---
 

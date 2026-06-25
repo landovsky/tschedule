@@ -1,7 +1,13 @@
-import json
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
-from tschedule.notify import should_notify, format_message, send_telegram
+import pytest
+
+from tschedule.notify import (
+    should_notify,
+    format_message,
+    send_notification,
+    channel_to_bot,
+)
 
 
 # --- should_notify ---
@@ -68,20 +74,54 @@ def test_format_truncates_long_stdout():
     assert "y" * 3001 not in msg
 
 
-# --- send_telegram ---
+# --- format_message uses plain text, not Markdown ---
 
-@patch("tschedule.notify.urllib.request.urlopen")
-def test_send_telegram_posts_correctly(mock_urlopen):
-    mock_resp = MagicMock()
-    mock_resp.__enter__ = MagicMock(return_value=mock_resp)
-    mock_resp.__exit__ = MagicMock(return_value=False)
-    mock_urlopen.return_value = mock_resp
+def test_format_message_has_no_markdown_markup():
+    # The /notify endpoint renders MarkdownV2 and the wrapper escapes every
+    # reserved char (backticks included), so any markup we emitted would surface
+    # literally. Keep the message plain so it reads cleanly after escaping.
+    msg = format_message("proj", "job", 1, 1.0, "report body", "boom")
+    assert "`" not in msg
+    assert "```" not in msg
 
-    send_telegram("TOKEN", "CHAT", "hello")
 
-    mock_urlopen.assert_called_once()
-    req = mock_urlopen.call_args[0][0]
-    assert "TOKEN" in req.full_url
-    body = json.loads(req.data)
-    assert body["chat_id"] == "CHAT"
-    assert body["text"] == "hello"
+# --- channel_to_bot: only "assistant" routes off the default bot ---
+
+def test_assistant_channel_maps_to_assistant_bot():
+    # Per-job channel: assistant -> a direct DM to Tomáš via the assistant bot.
+    assert channel_to_bot("assistant") == "assistant"
+
+def test_assistant_channel_is_case_and_space_insensitive():
+    # A stray "Assistant" / " assistant " in YAML must still route personally,
+    # not silently fall back to broadcasting to every DevOps subscriber.
+    assert channel_to_bot("  Assistant  ") == "assistant"
+
+@pytest.mark.parametrize("channel", ["", "default", "devops", "unknown"])
+def test_non_assistant_channels_keep_default_broadcast(channel):
+    # Empty/default/unknown all map to devops, which sends no /notify channel
+    # param — preserving today's default-bot broadcast behaviour.
+    assert channel_to_bot(channel) == "devops"
+
+
+# --- send_notification shells out to the wrapper ---
+
+@patch("tschedule.notify.subprocess.run")
+@patch("tschedule.notify.resolve_notifier", return_value="/bin/notify-tomas-telegram")
+def test_send_notification_invokes_wrapper_with_bot_and_message(mock_resolve, mock_run):
+    send_notification("hello", channel="assistant")
+
+    mock_run.assert_called_once()
+    argv = mock_run.call_args[0][0]
+    assert argv == ["/bin/notify-tomas-telegram", "assistant", "hello"]
+    # We rely on the wrapper to fail loudly so a broken delivery isn't swallowed.
+    assert mock_run.call_args.kwargs["check"] is True
+
+@patch("tschedule.notify.subprocess.run")
+@patch("tschedule.notify.resolve_notifier", return_value=None)
+def test_send_notification_raises_when_wrapper_missing(mock_resolve, mock_run):
+    # No wrapper on the box -> raise rather than silently no-op, so the caller
+    # (executor) can log it. The executor pre-checks resolve_notifier to stay
+    # quiet on dev/CI boxes where the wrapper legitimately isn't installed.
+    with pytest.raises(FileNotFoundError):
+        send_notification("hello")
+    mock_run.assert_not_called()

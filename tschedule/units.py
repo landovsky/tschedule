@@ -23,10 +23,16 @@ def _tschedule_bin() -> str:
 
 
 def _user_path() -> str:
-    """Build a PATH that includes ~/.local/bin on top of the systemd default."""
+    """Build a PATH that includes the user bin dirs on top of the systemd default.
+
+    ~/.dotfiles/bin is here so jobs (and our own notify path) can find the
+    `notify-tomas-telegram` wrapper, which lives there and isn't on the bare
+    systemd PATH.
+    """
     local_bin = str(Path("~/.local/bin").expanduser())
+    dotfiles_bin = str(Path("~/.dotfiles/bin").expanduser())
     base = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-    return f"{local_bin}:{base}"
+    return f"{local_bin}:{dotfiles_bin}:{base}"
 
 
 def _service(job: JobConfig) -> str:
